@@ -13,6 +13,7 @@ no if $] >= 5.018, warnings => "experimental::smartmatch";
 use Carp ();
 use Time::Duration qw/concise duration/;
 use Data::Dumper;
+use List::Util qw[min max];
 $Data::Dumper::Useqq = 1;
 $Data::Dumper::Sortkeys = 1;
 
@@ -94,18 +95,17 @@ my %color = (
 my $DEFAULT_NX = 7;
 my $DEFAULT_NY = 6;
 my $DEFAULT_CONNECTIONS = 4;
-my $MAX_NX = 32;
-my $MAX_NY = 32;
+my $MAX_NX = 80;
+my $MAX_NY = 12;
 
 # challenge options: CONNS:ROWSxCOLS
-
 sub parse_challenge {
   my ($self, $options) = @_;
   my ($conns, $xy, $nx, $ny);
 
   "x" =~ /x/; # clear $1, $2 ...
-  if ($options !~ m/^([3-9])(:(\d+)x(\d+))?$/) {
-    return "Wrong options '$options', use: <CONNS:ROWSxCOLS>";
+  if ($options !~ m/^(\d+)(:(\d+)x(\d+))?$/) {
+    return "Invalid options '$options', use: <CONNS:ROWSxCOLS>";
   }
 
   $conns = $1;
@@ -119,16 +119,18 @@ sub parse_challenge {
 
   # auto adjust board size for `challenge N'
   if ((not length $xy) && ($self->{CONNECTIONS} >= $self->{N_X} || $self->{CONNECTIONS} >= $self->{N_Y})) {
-    $self->{N_X} = $self->{CONNECTIONS} * 2 - 1;
-    $self->{N_Y} = $self->{CONNECTIONS} * 2 - 2;
+    $self->{N_X} = min($self->{CONNECTIONS} * 2 - 1, $MAX_NX);
+    $self->{N_Y} = min($self->{CONNECTIONS} * 2 - 2, $MAX_NY);
   }
 
-  if ($self->{N_X} > $MAX_NX || $self->{N_X} < $self->{CONNECTIONS}) {
-    return "Wrong board-X size";
+  if ($self->{N_X} > $MAX_NX || $self->{N_Y} > $MAX_NY) {
+    return "Invalid board options ($self->{CONNECTIONS}:$self->{N_Y}x$self->{N_X}), " .
+             "maximum board size is: ${MAX_NY}x${MAX_NX}.";
   }
 
-  if ($self->{N_Y} > $MAX_NY || $self->{N_Y} < $self->{CONNECTIONS}) {
-    return "Wrong board-Y size";
+  if ($self->{N_X} < $self->{CONNECTIONS} && $self->{N_Y} < $self->{CONNECTIONS}) {
+    return "Invalid board options ($self->{CONNECTIONS}:$self->{N_Y}x$self->{N_X}), " .
+             "rows or columns must be >= than connections.";
   }
 
   return 0;
@@ -153,6 +155,10 @@ sub connect4_cmd {
         when ('help') {
           return "Seriously?";
         }
+
+	when ('challenge') {
+	  return "challenge [nick] [connections[:ROWSxCOLS]] -- connections has to be >= than rows or columns (duh!).";
+	}
 
         default {
           if (length $arguments) {
